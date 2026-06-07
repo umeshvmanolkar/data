@@ -1304,13 +1304,15 @@ function getClickedHandle(drawing, mouseX, mouseY) {
     const maxX = Math.max(xStart, xEnd);
     const entryPrice = drawing.start.price;
     const targetPrice = drawing.end.price;
-    const priceDiff = Math.abs(targetPrice - entryPrice);
     
-    let stopPrice;
-    if (drawing.type === 'long') {
-      stopPrice = entryPrice - priceDiff;
-    } else {
-      stopPrice = entryPrice + priceDiff;
+    let stopPrice = drawing.stopPrice;
+    if (stopPrice === undefined) {
+      const priceDiff = Math.abs(targetPrice - entryPrice);
+      if (drawing.type === 'long') {
+        stopPrice = entryPrice - priceDiff;
+      } else {
+        stopPrice = entryPrice + priceDiff;
+      }
     }
     
     const yTarget = candlestickSeries.priceToCoordinate(targetPrice);
@@ -1359,21 +1361,25 @@ function updateDrawingHandle(drawing, handleType, time, price) {
     if (handleType === 'entry') {
       const oldEntry = drawing.start.price;
       const priceDelta = price - oldEntry;
+      
+      if (drawing.stopPrice === undefined) {
+        const priceDiff = Math.abs(drawing.end.price - oldEntry);
+        if (drawing.type === 'long') {
+          drawing.stopPrice = oldEntry - priceDiff;
+        } else {
+          drawing.stopPrice = oldEntry + priceDiff;
+        }
+      }
+      
       drawing.start.price = price;
       drawing.start.time = time;
       drawing.end.price += priceDelta;
+      drawing.stopPrice += priceDelta;
     } else if (handleType === 'target') {
       drawing.end.price = price;
       drawing.end.time = time;
     } else if (handleType === 'stop') {
-      const entryPrice = drawing.start.price;
-      const newPriceDiff = Math.abs(price - entryPrice);
-      
-      if (drawing.type === 'long') {
-        drawing.end.price = entryPrice + newPriceDiff;
-      } else {
-        drawing.end.price = entryPrice - newPriceDiff;
-      }
+      drawing.stopPrice = price;
       drawing.end.time = time;
     }
   }
@@ -1418,11 +1424,13 @@ function hitTestDrawings(x, y) {
       const targetPrice = drawing.end.price;
       const priceDiff = Math.abs(targetPrice - entryPrice);
       
-      let stopPrice;
-      if (drawing.type === 'long') {
-        stopPrice = entryPrice - priceDiff;
-      } else {
-        stopPrice = entryPrice + priceDiff;
+      let stopPrice = drawing.stopPrice;
+      if (stopPrice === undefined) {
+        if (drawing.type === 'long') {
+          stopPrice = entryPrice - priceDiff;
+        } else {
+          stopPrice = entryPrice + priceDiff;
+        }
       }
       
       const prices = [entryPrice, targetPrice, stopPrice];
