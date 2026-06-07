@@ -993,7 +993,7 @@ function drawShape(type, start, end, isPreview, isSelected) {
     sessionCtx.setLineDash([]);
     sessionCtx.stroke();
     
-    if (isSelected) {
+    if (isSelected || isPreview) {
       // Entry line handles
       drawCircle(sessionCtx, minX, yStart, 4.5, '#ffffff', '#1e222d');
       drawCircle(sessionCtx, maxX, yStart, 4.5, '#ffffff', '#1e222d');
@@ -1003,12 +1003,14 @@ function drawShape(type, start, end, isPreview, isSelected) {
       // Stop line handles
       drawCircle(sessionCtx, minX, yStop, 4, '#ffffff', 'rgba(242, 54, 69, 0.6)');
       drawCircle(sessionCtx, maxX, yStop, 4, '#ffffff', 'rgba(242, 54, 69, 0.6)');
+      
+      const targetPct = (priceDiff / entryPrice) * 100;
+      const stopPct = (priceDiff / entryPrice) * 100;
+      
+      drawTargetBadge(minX + boxWidth / 2, yTarget, priceDiff, targetPct);
+      drawStopBadge(minX + boxWidth / 2, yStop, priceDiff, stopPct);
+      drawStatsCard(minX + boxWidth / 2, yStart);
     }
-    
-    const targetPct = (priceDiff / entryPrice) * 100;
-    const stopPct = (priceDiff / entryPrice) * 100;
-    
-    drawStatsCard(minX + boxWidth / 2, yStart, priceDiff, targetPct, stopPct, entryPrice, targetPrice, stopPrice, type);
   }
   
   sessionCtx.restore();
@@ -1026,47 +1028,89 @@ function drawCircle(ctx, x, y, r, fillColor, strokeColor) {
   ctx.restore();
 }
 
-function drawStatsCard(x, y, priceDiff, targetPct, stopPct, entryPrice, targetPrice, stopPrice, type) {
-  const cardWidth = 160;
-  const cardHeight = 70;
-  const cardX = x - cardWidth / 2;
-  const cardY = y - cardHeight / 2;
-  
+function drawStatsCard(x, y) {
+  const text = 'Risk/reward ratio: 1.00';
   sessionCtx.save();
+  sessionCtx.font = 'bold 10px Outfit, sans-serif';
+  const textWidth = sessionCtx.measureText(text).width;
+  
+  const badgeWidth = textWidth + 16;
+  const badgeHeight = 22;
+  const bx = x - badgeWidth / 2;
+  const by = y - badgeHeight / 2;
   
   sessionCtx.fillStyle = 'rgba(30, 34, 45, 0.95)';
-  sessionCtx.strokeStyle = 'rgba(54, 58, 69, 0.9)';
-  sessionCtx.lineWidth = 1.5;
+  sessionCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  sessionCtx.lineWidth = 1;
   
   sessionCtx.beginPath();
-  const radius = 6;
+  const radius = 4;
   if (sessionCtx.roundRect) {
-    sessionCtx.roundRect(cardX, cardY, cardWidth, cardHeight, radius);
+    sessionCtx.roundRect(bx, by, badgeWidth, badgeHeight, radius);
   } else {
-    sessionCtx.rect(cardX, cardY, cardWidth, cardHeight);
+    sessionCtx.rect(bx, by, badgeWidth, badgeHeight);
   }
   sessionCtx.fill();
   sessionCtx.stroke();
   
   sessionCtx.fillStyle = '#ffffff';
-  sessionCtx.font = 'Outfit, sans-serif';
   sessionCtx.textAlign = 'center';
   sessionCtx.textBaseline = 'middle';
+  sessionCtx.fillText(text, x, y + 0.5);
+  sessionCtx.restore();
+}
+
+function drawTargetBadge(x, y, priceDiff, pct) {
+  const text = `Target: ${priceDiff.toFixed(2)} (${pct.toFixed(2)}%)`;
+  sessionCtx.save();
+  sessionCtx.font = 'bold 9px Outfit, sans-serif';
+  const textWidth = sessionCtx.measureText(text).width;
   
-  sessionCtx.font = 'bold 10px Outfit, sans-serif';
-  sessionCtx.fillText('Risk/Reward Ratio: 1.00', x, cardY + 15);
+  const badgeWidth = textWidth + 12;
+  const badgeHeight = 16;
+  const bx = x - badgeWidth / 2;
+  const by = y - badgeHeight - 4;
   
-  sessionCtx.font = '9px Outfit, sans-serif';
-  sessionCtx.fillStyle = '#26a69a';
-  sessionCtx.fillText(`Target: +${priceDiff.toFixed(2)} (+${targetPct.toFixed(2)}%)`, x, cardY + 33);
+  sessionCtx.fillStyle = '#089981';
+  sessionCtx.beginPath();
+  if (sessionCtx.roundRect) {
+    sessionCtx.roundRect(bx, by, badgeWidth, badgeHeight, 3);
+  } else {
+    sessionCtx.rect(bx, by, badgeWidth, badgeHeight);
+  }
+  sessionCtx.fill();
   
-  sessionCtx.fillStyle = '#ef5350';
-  sessionCtx.fillText(`Stop: -${priceDiff.toFixed(2)} (-${stopPct.toFixed(2)}%)`, x, cardY + 48);
+  sessionCtx.fillStyle = '#ffffff';
+  sessionCtx.textAlign = 'center';
+  sessionCtx.textBaseline = 'middle';
+  sessionCtx.fillText(text, x, by + badgeHeight / 2 + 0.5);
+  sessionCtx.restore();
+}
+
+function drawStopBadge(x, y, priceDiff, pct) {
+  const text = `Stop: ${priceDiff.toFixed(2)} (${pct.toFixed(2)}%)`;
+  sessionCtx.save();
+  sessionCtx.font = 'bold 9px Outfit, sans-serif';
+  const textWidth = sessionCtx.measureText(text).width;
   
-  sessionCtx.font = '8px Outfit, sans-serif';
-  sessionCtx.fillStyle = '#848e9c';
-  sessionCtx.fillText(`Entry: ${entryPrice.toFixed(2)}`, x, cardY + 60);
+  const badgeWidth = textWidth + 12;
+  const badgeHeight = 16;
+  const bx = x - badgeWidth / 2;
+  const by = y + 4;
   
+  sessionCtx.fillStyle = '#f23645';
+  sessionCtx.beginPath();
+  if (sessionCtx.roundRect) {
+    sessionCtx.roundRect(bx, by, badgeWidth, badgeHeight, 3);
+  } else {
+    sessionCtx.rect(bx, by, badgeWidth, badgeHeight);
+  }
+  sessionCtx.fill();
+  
+  sessionCtx.fillStyle = '#ffffff';
+  sessionCtx.textAlign = 'center';
+  sessionCtx.textBaseline = 'middle';
+  sessionCtx.fillText(text, x, by + badgeHeight / 2 + 0.5);
   sessionCtx.restore();
 }
 
