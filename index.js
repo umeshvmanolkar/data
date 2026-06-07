@@ -906,8 +906,8 @@ function drawShape(type, start, end, isPreview, isSelected) {
     
     sessionCtx.beginPath();
     sessionCtx.rect(xStart, yStart, width, height);
-    sessionCtx.strokeStyle = 'rgba(156, 39, 176, 0.7)';
-    sessionCtx.lineWidth = 2;
+    sessionCtx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+    sessionCtx.lineWidth = 1;
     if (isPreview) {
       sessionCtx.setLineDash([4, 4]);
     } else {
@@ -916,10 +916,10 @@ function drawShape(type, start, end, isPreview, isSelected) {
     sessionCtx.stroke();
     
     if (isPreview || isSelected) {
-      drawCircle(sessionCtx, xStart, yStart, 4, '#ffffff', 'rgba(156, 39, 176, 0.7)');
-      drawCircle(sessionCtx, xEnd, yStart, 4, '#ffffff', 'rgba(156, 39, 176, 0.7)');
-      drawCircle(sessionCtx, xStart, yEnd, 4, '#ffffff', 'rgba(156, 39, 176, 0.7)');
-      drawCircle(sessionCtx, xEnd, yEnd, 4, '#ffffff', 'rgba(156, 39, 176, 0.7)');
+      drawCircle(sessionCtx, xStart, yStart, 4, '#ffffff', 'rgba(0, 0, 0, 0.7)');
+      drawCircle(sessionCtx, xEnd, yStart, 4, '#ffffff', 'rgba(0, 0, 0, 0.7)');
+      drawCircle(sessionCtx, xStart, yEnd, 4, '#ffffff', 'rgba(0, 0, 0, 0.7)');
+      drawCircle(sessionCtx, xEnd, yEnd, 4, '#ffffff', 'rgba(0, 0, 0, 0.7)');
     }
   } else if (type === 'long' || type === 'short') {
     const entryPrice = start.price;
