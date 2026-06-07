@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XAUUSD 1-Minute Interactive Chart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+  <!-- Lightweight Charts Standalone CDN Pinned to v4.1.1 -->
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+  <!-- Global Error Handler for UI Debugging -->
+  <script>
+    window.addEventListener('error', function(e) {
+      console.error("Global Error Caught: ", e);
+      const progressEl = document.getElementById('loading-progress');
+      const textEl = document.querySelector('.loading-text');
+      if (progressEl) {
+        progressEl.textContent = 'ERROR';
+        progressEl.style.color = '#ef5350';
+      }
+      if (textEl) {
+        textEl.innerHTML = 'Uncaught Error: ' + e.message + '<br><small style="color:#848e9c; font-size: 0.8rem;">' + e.filename + ':' + e.lineno + '</small>';
+      }
+    });
+
+    window.addEventListener('unhandledrejection', function(event) {
+      console.error("Unhandled Promise Rejection: ", event.reason);
+      const progressEl = document.getElementById('loading-progress');
+      const textEl = document.querySelector('.loading-text');
+      if (progressEl) {
+        progressEl.textContent = 'ERROR';
+        progressEl.style.color = '#ef5350';
+      }
+      if (textEl) {
+        const errorMsg = event.reason && event.reason.message ? event.reason.message : String(event.reason);
+        const stack = event.reason && event.reason.stack ? event.reason.stack : '';
+        textEl.innerHTML = 'Unhandled Rejection: ' + errorMsg + '<br><small style="color:#848e9c; font-size: 0.7rem; display: block; max-width: 90vw; overflow-x: auto; white-space: pre-wrap; text-align: left;">' + stack + '</small>';
+      }
+    });
+  </script>
+
+  <!-- Loading Screen Overlay -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="spinner-container">
+      <div class="spinner"></div>
+      <div class="loading-text">Loading XAUUSD Data...</div>
+      <div class="loading-progress" id="loading-progress">0%</div>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <!-- Top Stats Panel -->
+    <header class="app-header">
+      <div class="brand">
+        <span class="symbol-badge">XAUUSD</span>
+        <span class="timeframe-badge">1m</span>
+        <span class="description">Gold vs US Dollar</span>
+      </div>
+
+      <!-- Live Hover Values -->
+      <div class="ohlcv-container" id="ohlcv-display">
+        <div class="ohlcv-item"><span class="label">O</span><span class="val" id="val-o">--</span></div>
+        <div class="ohlcv-item"><span class="label">H</span><span class="val" id="val-h">--</span></div>
+        <div class="ohlcv-item"><span class="label">L</span><span class="val" id="val-l">--</span></div>
+        <div class="ohlcv-item"><span class="label">C</span><span class="val" id="val-c">--</span></div>
+        <div class="ohlcv-item"><span class="label">V</span><span class="val" id="val-v">--</span></div>
+        <div class="ohlcv-item"><span class="label">Change</span><span class="val" id="val-chg">--</span></div>
+      </div>
+
+      <!-- Quick Actions / Navigation -->
+      <div class="header-actions">
+        <!-- Date Go-To -->
+        <div class="nav-control">
+          <input type="date" id="goto-date-picker" min="2026-02-24" max="2026-06-05" value="2026-02-24">
+          <button id="goto-date-btn" class="btn btn-secondary">Go To Date</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="main-layout">
+      <!-- Left Toolbar for Drawing Tools -->
+      <aside class="sidebar-toolbar">
+        <button id="tool-cursor" class="tool-btn active" title="Cursor (Pan/Zoom)">
+          <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M4.5,3.4L20.1,19L15.3,19.9L19.4,24L17.3,25L13.1,20.8L10.3,23.3L4.5,3.4Z"/></svg>
+          <span class="tool-label">Cursor</span>
+        </button>
+        
+        <button id="tool-trendline" class="tool-btn" title="Trendline (Click 2 points)">
+          <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19,3A2,2 0 0,1 21,5C21,5.68 20.66,6.29 20.14,6.66L15.66,15.14C15.88,15.69 15.88,16.31 15.66,16.86L20.14,21.34C20.66,20.97 21.32,20.97 21.84,21.34C22.56,21.86 22.76,22.86 22.24,23.58C21.72,24.3 20.72,24.5 20,23.98C19.32,23.5 19.12,22.5 19.64,21.78L15.16,17.3C14.61,17.5 13.98,17.5 13.43,17.3L5.66,21.14C5.88,21.69 5.88,22.31 5.66,22.86C5.14,23.58 4.14,23.78 3.42,23.26C2.7,22.74 2.5,21.74 3.02,21.02C3.54,20.3 4.54,20.1 5.26,20.62L13.03,16.78C12.81,16.23 12.81,15.61 13.03,15.06L8.55,6.66C8.03,7.03 7.37,7.03 6.85,6.66C6.13,6.14 5.93,5.14 6.45,4.42C6.97,3.7 7.97,3.5 8.69,4.02C9.37,4.5 9.57,5.5 9.05,6.22L13.53,10.7C14.08,10.5 14.71,10.5 15.26,10.7L19.74,5.66C19.52,5.11 19.52,4.49 19.74,3.94C20.12,3.34 20.79,3 21.5,3A2,2 0 0,1 19,3Z"/></svg>
+          <span class="tool-label">Trendline</span>
+        </button>
+
+        <button id="tool-horizontal" class="tool-btn" title="Horizontal Line (Click anywhere)">
+          <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M22,11H18.06C17.6,9.84 16.47,9 15.13,9H8.87C7.53,9 6.4,9.84 5.94,11H2V13H5.94C6.4,14.16 7.53,15 8.87,15H15.13C16.47,15 17.6,14.16 18.06,13H22V11M15,13H9V11H15V13Z"/></svg>
+          <span class="tool-label">H-Line</span>
+        </button>
+
+        <div class="divider"></div>
+
+        <!-- Indicator Toggles -->
+        <button id="toggle-sma20" class="indicator-btn" title="Toggle 20 Period Simple Moving Average">
+          <span class="ind-dot sma20-dot"></span>
+          <span class="tool-label">SMA 20</span>
+        </button>
+
+        <button id="toggle-ema50" class="indicator-btn" title="Toggle 50 Period Exponential Moving Average">
+          <span class="ind-dot ema50-dot"></span>
+          <span class="tool-label">EMA 50</span>
+        </button>
+
+        <button id="toggle-sessions" class="indicator-btn active" title="Toggle Session Markings">
+          <span class="ind-dot session-dot" style="background-color: #9c27b0;"></span>
+          <span class="tool-label">Sessions</span>
+        </button>
+
+        <div class="divider"></div>
+
+        <!-- Utility Buttons -->
+        <button id="btn-clear" class="util-btn" title="Clear all drawings">
+          <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M19.36,2.72L20.78,4.14L15.06,9.86L16.48,11.28L11.28,16.48L9.86,15.06L4.14,20.78L2.72,19.36L8.44,13.64L7.02,12.22L12.22,7.02L13.64,8.44L19.36,2.72M5.9,12.22L12.22,5.9L13.64,7.31L7.31,13.64L5.9,12.22Z"/></svg>
+          <span class="tool-label">Clear All</span>
+        </button>
+        
+        <button id="btn-reset" class="util-btn" title="Reset View (Show recent data)">
+          <svg viewBox="0 0 24 24" class="icon"><path fill="currentColor" d="M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12H2A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4Z"/></svg>
+          <span class="tool-label">Reset View</span>
+        </button>
+      </aside>
+
+      <!-- Main Chart container -->
+      <main class="chart-area">
+        <!-- Technical details and active tool hint -->
+        <div class="chart-status-bar">
+          <div id="active-tool-hint" class="status-hint">Mode: Cursor (Drag to pan, scroll to zoom)</div>
+          <div id="data-range-info" class="range-info">Data Range: Loading...</div>
+        </div>
+
+        <div id="chart-viewport" class="chart-viewport">
+          <!-- Lightweight Charts canvas gets injected here -->
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="index.js"></script>
+</body>
+</html>
