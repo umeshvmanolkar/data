@@ -695,8 +695,8 @@ function precalculateSessions() {
     if (asianStats) {
       sessionBoxes.push({
         type: 'asian',
-        colorBorder: 'rgba(41, 98, 255, 0.75)', // Richer Blue
-        colorBg: 'rgba(41, 98, 255, 0.08)',
+        colorBorder: 'rgba(13, 71, 161, 0.8)', // Darker Blue
+        colorBg: 'rgba(13, 71, 161, 0.12)',
         ...asianStats
       });
     }
@@ -714,8 +714,8 @@ function precalculateSessions() {
     if (lonStats) {
       sessionBoxes.push({
         type: 'london',
-        colorBorder: 'rgba(218, 140, 16, 0.75)', // Warm Gold
-        colorBg: 'rgba(255, 204, 0, 0.08)',
+        colorBorder: 'rgba(191, 120, 0, 0.8)', // Darker Warm Gold
+        colorBg: 'rgba(191, 120, 0, 0.12)',
         ...lonStats
       });
     }
@@ -733,8 +733,8 @@ function precalculateSessions() {
     if (nyStats) {
       sessionBoxes.push({
         type: 'newyork',
-        colorBorder: 'rgba(80, 85, 100, 0.75)', // Richer Grey
-        colorBg: 'rgba(128, 128, 128, 0.08)',
+        colorBorder: 'rgba(55, 60, 75, 0.8)', // Darker Grey
+        colorBg: 'rgba(55, 60, 75, 0.12)',
         ...nyStats
       });
     }
