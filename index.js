@@ -1041,8 +1041,8 @@ function drawCircle(ctx, x, y, r, fillColor, strokeColor) {
   ctx.restore();
 }
 
-function drawStatsCard(x, y) {
-  const text = 'Risk/reward ratio: 1.00';
+function drawStatsCard(x, y, rr) {
+  const text = `Risk/reward ratio: ${(rr !== undefined && !isNaN(rr)) ? rr.toFixed(2) : '1.00'}`;
   sessionCtx.save();
   sessionCtx.font = 'bold 10px Outfit, sans-serif';
   const textWidth = sessionCtx.measureText(text).width;
