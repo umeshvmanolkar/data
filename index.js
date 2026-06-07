@@ -853,18 +853,27 @@ function renderLoop() {
 
 function renderCustomDrawings() {
   for (const drawing of customDrawings) {
-    drawShape(drawing.type, drawing.start, drawing.end, false, drawing.id === selectedDrawingId);
+    drawShape(drawing, false, drawing.id === selectedDrawingId);
   }
 }
 
 function renderActivePreview() {
   if (drawingStart && drawingCurrent) {
-    drawShape(activeTool, drawingStart, drawingCurrent, true, false);
+    const tempDrawing = {
+      type: activeTool,
+      start: drawingStart,
+      end: drawingCurrent
+    };
+    drawShape(tempDrawing, true, false);
   }
 }
 
-function drawShape(type, start, end, isPreview, isSelected) {
+function drawShape(drawing, isPreview, isSelected) {
   if (!chart || !candlestickSeries || !sessionCtx) return;
+  
+  const type = drawing.type;
+  const start = drawing.start;
+  const end = drawing.end;
   
   const timeScale = chart.timeScale();
   const xStart = timeScale.timeToCoordinate(start.time);
@@ -881,13 +890,11 @@ function drawShape(type, start, end, isPreview, isSelected) {
     sessionCtx.moveTo(xStart, yStart);
     sessionCtx.lineTo(xEnd, yEnd);
     
+    sessionCtx.strokeStyle = '#2962ff';
+    sessionCtx.lineWidth = 1; // Thin 1px line
     if (isPreview) {
-      sessionCtx.strokeStyle = '#2962ff';
-      sessionCtx.lineWidth = 2;
       sessionCtx.setLineDash([4, 4]);
     } else {
-      sessionCtx.strokeStyle = '#2962ff';
-      sessionCtx.lineWidth = 2.5;
       sessionCtx.setLineDash([]);
     }
     sessionCtx.stroke();
@@ -906,7 +913,7 @@ function drawShape(type, start, end, isPreview, isSelected) {
     sessionCtx.beginPath();
     sessionCtx.rect(xStart, yStart, width, height);
     sessionCtx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
-    sessionCtx.lineWidth = 1;
+    sessionCtx.lineWidth = 1; // Thin 1px border
     if (isPreview) {
       sessionCtx.setLineDash([4, 4]);
     } else {
@@ -923,13 +930,15 @@ function drawShape(type, start, end, isPreview, isSelected) {
   } else if (type === 'long' || type === 'short') {
     const entryPrice = start.price;
     const targetPrice = end.price;
-    const priceDiff = Math.abs(targetPrice - entryPrice);
     
-    let stopPrice;
-    if (type === 'long') {
-      stopPrice = entryPrice - priceDiff;
-    } else {
-      stopPrice = entryPrice + priceDiff;
+    let stopPrice = drawing.stopPrice;
+    if (stopPrice === undefined) {
+      const priceDiff = Math.abs(targetPrice - entryPrice);
+      if (type === 'long') {
+        stopPrice = entryPrice - priceDiff;
+      } else {
+        stopPrice = entryPrice + priceDiff;
+      }
     }
     
     const yTarget = candlestickSeries.priceToCoordinate(targetPrice);
@@ -969,7 +978,7 @@ function drawShape(type, start, end, isPreview, isSelected) {
     sessionCtx.fillStyle = 'rgba(242, 54, 69, 0.14)';
     sessionCtx.fillRect(minX, yRedTop, boxWidth, yRedBottom - yRedTop);
     
-    sessionCtx.lineWidth = 1.5;
+    sessionCtx.lineWidth = 1; // Thin 1px border
     if (isPreview) {
       sessionCtx.setLineDash([3, 3]);
     } else {
@@ -989,7 +998,7 @@ function drawShape(type, start, end, isPreview, isSelected) {
     sessionCtx.moveTo(minX, yStart);
     sessionCtx.lineTo(maxX, yStart);
     sessionCtx.strokeStyle = '#1e222d';
-    sessionCtx.lineWidth = 2.5;
+    sessionCtx.lineWidth = 1; // Thin 1px entry line
     sessionCtx.setLineDash([]);
     sessionCtx.stroke();
     
@@ -1004,12 +1013,16 @@ function drawShape(type, start, end, isPreview, isSelected) {
       drawCircle(sessionCtx, minX, yStop, 4, '#ffffff', 'rgba(242, 54, 69, 0.6)');
       drawCircle(sessionCtx, maxX, yStop, 4, '#ffffff', 'rgba(242, 54, 69, 0.6)');
       
-      const targetPct = (priceDiff / entryPrice) * 100;
-      const stopPct = (priceDiff / entryPrice) * 100;
+      const targetDiff = Math.abs(targetPrice - entryPrice);
+      const stopDiff = Math.abs(entryPrice - stopPrice);
       
-      drawTargetBadge(minX + boxWidth / 2, yTarget, priceDiff, targetPct);
-      drawStopBadge(minX + boxWidth / 2, yStop, priceDiff, stopPct);
-      drawStatsCard(minX + boxWidth / 2, yStart);
+      const targetPct = (targetDiff / entryPrice) * 100;
+      const stopPct = (stopDiff / entryPrice) * 100;
+      const rr = stopDiff === 0 ? 0 : targetDiff / stopDiff;
+      
+      drawTargetBadge(minX + boxWidth / 2, yTarget, targetDiff, targetPct);
+      drawStopBadge(minX + boxWidth / 2, yStop, stopDiff, stopPct);
+      drawStatsCard(minX + boxWidth / 2, yStart, rr);
     }
   }
   
