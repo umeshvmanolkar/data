@@ -17,8 +17,7 @@ let showSma = false;
 let showEma = false;
 
 // Drawing tools state
-let activeTool = 'cursor'; // 'cursor', 'trendline', 'horizontal'
-let trendlineStart = null;
+let activeTool = 'cursor'; // 'cursor', 'trendline', 'horizontal', 'rectangle', 'long', 'short'
 let trendlines = [];
 let horizontalLines = [];
 
@@ -27,6 +26,12 @@ let sessionBoxes = [];
 let showSessions = true;
 let sessionCanvas = null;
 let sessionCtx = null;
+
+// Custom Canvas Drawings State
+let customDrawings = [];
+let drawingStart = null;
+let drawingCurrent = null;
+let selectedDrawingId = null;
 
 // Initialize Page
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
@@ -37,6 +42,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 
 async function startApp() {
   initChart();
+  loadDrawings();
   await loadAndParseData();
   setupSessionOverlay();
   setupEventListeners();
@@ -387,17 +393,33 @@ function setActiveTool(tool) {
   if (btn) btn.classList.add('active');
   
   // Escape active states
-  trendlineStart = null;
+  drawingStart = null;
+  drawingCurrent = null;
   
   const statusHint = document.getElementById('active-tool-hint');
+  
+  if (sessionCanvas) {
+    sessionCanvas.style.pointerEvents = 'none'; // Keep pass-through always
+  }
   
   if (tool === 'cursor') {
     statusHint.textContent = 'Mode: Cursor (Drag to pan, scroll to zoom)';
     chart.applyOptions({ handleScroll: true, handleScale: true });
   } else if (tool === 'trendline') {
-    statusHint.textContent = 'Mode: Trendline (Click starting point, then ending point)';
+    statusHint.textContent = 'Mode: Trendline (Click start, move mouse, click end)';
+    chart.applyOptions({ handleScroll: false, handleScale: false });
   } else if (tool === 'horizontal') {
-    statusHint.textContent = 'Mode: Horizontal Line (Click anywhere to place support/resistance)';
+    statusHint.textContent = 'Mode: Horizontal Line (Click anywhere on the chart)';
+    chart.applyOptions({ handleScroll: true, handleScale: true });
+  } else if (tool === 'rectangle') {
+    statusHint.textContent = 'Mode: Rectangle (Click first corner, move mouse, click second corner)';
+    chart.applyOptions({ handleScroll: false, handleScale: false });
+  } else if (tool === 'long') {
+    statusHint.textContent = 'Mode: Long Position (Click entry price, move mouse, click target)';
+    chart.applyOptions({ handleScroll: false, handleScale: false });
+  } else if (tool === 'short') {
+    statusHint.textContent = 'Mode: Short Position (Click entry price, move mouse, click target)';
+    chart.applyOptions({ handleScroll: false, handleScale: false });
   }
 }
 
@@ -407,6 +429,9 @@ function setupEventListeners() {
   document.getElementById('tool-cursor').addEventListener('click', () => setActiveTool('cursor'));
   document.getElementById('tool-trendline').addEventListener('click', () => setActiveTool('trendline'));
   document.getElementById('tool-horizontal').addEventListener('click', () => setActiveTool('horizontal'));
+  document.getElementById('tool-rectangle').addEventListener('click', () => setActiveTool('rectangle'));
+  document.getElementById('tool-long').addEventListener('click', () => setActiveTool('long'));
+  document.getElementById('tool-short').addEventListener('click', () => setActiveTool('short'));
   
   // Indicators
   document.getElementById('toggle-sma20').addEventListener('click', () => {
@@ -475,6 +500,11 @@ function setupEventListeners() {
     trendlines.forEach(series => chart.removeSeries(series));
     trendlines = [];
     
+    // Clear Custom Drawings
+    customDrawings = [];
+    saveDrawings();
+    selectedDrawingId = null;
+    
     setActiveTool('cursor');
   });
 
@@ -511,10 +541,20 @@ function setupEventListeners() {
     }
   });
 
-  // Handle Keyboard escape to cancel drawings
+  // Handle Keyboard escape and deletion
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      if (drawingStart) {
+        drawingStart = null;
+        drawingCurrent = null;
+      }
       setActiveTool('cursor');
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (activeTool === 'cursor' && selectedDrawingId !== null) {
+        customDrawings = customDrawings.filter(d => d.id !== selectedDrawingId);
+        selectedDrawingId = null;
+        saveDrawings();
+      }
     }
   });
 
@@ -532,12 +572,11 @@ function setupEventListeners() {
     }
   });
 
-  // Interactive Click Drawings Setup
+  // Interactive Click Drawings Setup for Horizontal Line
   chart.subscribeClick((param) => {
     if (!param.point || !param.time) return;
     
     const price = candlestickSeries.coordinateToPrice(param.point.y);
-    const time = param.time;
     
     if (activeTool === 'horizontal') {
       const line = candlestickSeries.createPriceLine({
@@ -550,29 +589,16 @@ function setupEventListeners() {
       });
       horizontalLines.push(line);
       setActiveTool('cursor');
-    } else if (activeTool === 'trendline') {
-      if (!trendlineStart) {
-        trendlineStart = { time, price };
-        const statusHint = document.getElementById('active-tool-hint');
-        statusHint.textContent = 'Trendline: Click ending point to complete trend...';
-      } else {
-        const lineSeries = chart.addLineSeries({
-          color: '#ff9800',
-          lineWidth: 2,
-          crosshairMarkerVisible: false,
-          lastValueVisible: false,
-          priceLineVisible: false,
-        });
-        lineSeries.setData([
-          { time: trendlineStart.time, value: trendlineStart.price },
-          { time: time, value: price }
-        ]);
-        trendlines.push(lineSeries);
-        trendlineStart = null;
-        setActiveTool('cursor');
-      }
     }
   });
+
+  // Attach capturing event listeners for drawing and selection on the viewport
+  const viewport = document.getElementById('chart-viewport');
+  if (viewport) {
+    viewport.addEventListener('mousedown', handleViewportMouseDown, true);
+    viewport.addEventListener('mousemove', handleViewportMouseMove, true);
+    viewport.addEventListener('contextmenu', handleViewportContextMenu, true);
+  }
 }
 
 // ----------------------------------------------------
@@ -769,58 +795,475 @@ function renderLoop() {
   // Clear previous frame
   sessionCtx.clearRect(0, 0, sessionCanvas.width / window.devicePixelRatio, sessionCanvas.height / window.devicePixelRatio);
   
-  if (!showSessions) {
-    requestAnimationFrame(renderLoop);
-    return;
-  }
-  
   const timeScale = chart.timeScale();
   const visibleRange = timeScale.getVisibleRange();
-  if (!visibleRange) {
-    requestAnimationFrame(renderLoop);
+  
+  if (showSessions && visibleRange) {
+    // Render boxes only if they intersect with the visible timescale range
+    for (const box of sessionBoxes) {
+      if (box.endTime < visibleRange.from || box.startTime > visibleRange.to) {
+        continue;
+      }
+      
+      const xStart = timeScale.timeToCoordinate(box.startTime);
+      const xEnd = timeScale.timeToCoordinate(box.endTime);
+      const yHigh = candlestickSeries.priceToCoordinate(box.high);
+      const yLow = candlestickSeries.priceToCoordinate(box.low);
+      
+      if (xStart === null || xEnd === null || yHigh === null || yLow === null) {
+        continue;
+      }
+      
+      const width = xEnd - xStart;
+      const height = yLow - yHigh;
+      
+      // Draw Box Fill
+      sessionCtx.fillStyle = box.colorBg;
+      sessionCtx.fillRect(xStart, yHigh, width, height);
+      
+      // Draw Box Outline
+      sessionCtx.strokeStyle = box.colorBorder;
+      sessionCtx.lineWidth = 1.5;
+      sessionCtx.strokeRect(xStart, yHigh, width, height);
+      
+      // Draw Session Text Label inside the box
+      sessionCtx.fillStyle = box.colorBorder;
+      sessionCtx.font = 'bold 9px Outfit, sans-serif';
+      sessionCtx.textAlign = 'left';
+      sessionCtx.textBaseline = 'top';
+      
+      let label = '';
+      if (box.type === 'asian') label = 'ASIA';
+      else if (box.type === 'london') label = 'LONDON';
+      else if (box.type === 'newyork') label = 'NY';
+      
+      sessionCtx.fillText(label, xStart + 4, yHigh + 4);
+    }
+  }
+  
+  // Render Custom Drawings and Previews
+  renderCustomDrawings();
+  renderActivePreview();
+  
+  requestAnimationFrame(renderLoop);
+}
+
+// ----------------------------------------------------
+// Custom Drawings Helpers & Rendering
+// ----------------------------------------------------
+
+function renderCustomDrawings() {
+  for (const drawing of customDrawings) {
+    drawShape(drawing.type, drawing.start, drawing.end, false, drawing.id === selectedDrawingId);
+  }
+}
+
+function renderActivePreview() {
+  if (drawingStart && drawingCurrent) {
+    drawShape(activeTool, drawingStart, drawingCurrent, true, false);
+  }
+}
+
+function drawShape(type, start, end, isPreview, isSelected) {
+  if (!chart || !candlestickSeries || !sessionCtx) return;
+  
+  const timeScale = chart.timeScale();
+  const xStart = timeScale.timeToCoordinate(start.time);
+  const xEnd = timeScale.timeToCoordinate(end.time);
+  const yStart = candlestickSeries.priceToCoordinate(start.price);
+  const yEnd = candlestickSeries.priceToCoordinate(end.price);
+  
+  if (xStart === null || xEnd === null || yStart === null || yEnd === null) return;
+  
+  sessionCtx.save();
+  
+  if (type === 'trendline') {
+    sessionCtx.beginPath();
+    sessionCtx.moveTo(xStart, yStart);
+    sessionCtx.lineTo(xEnd, yEnd);
+    
+    if (isPreview) {
+      sessionCtx.strokeStyle = '#2962ff';
+      sessionCtx.lineWidth = 2;
+      sessionCtx.setLineDash([4, 4]);
+    } else {
+      sessionCtx.strokeStyle = '#2962ff';
+      sessionCtx.lineWidth = 2.5;
+      sessionCtx.setLineDash([]);
+    }
+    sessionCtx.stroke();
+    
+    if (isPreview || isSelected) {
+      drawCircle(sessionCtx, xStart, yStart, 4.5, '#ffffff', '#2962ff');
+      drawCircle(sessionCtx, xEnd, yEnd, 4.5, '#ffffff', '#2962ff');
+    }
+  } else if (type === 'rectangle') {
+    const width = xEnd - xStart;
+    const height = yEnd - yStart;
+    
+    sessionCtx.fillStyle = 'rgba(156, 39, 176, 0.05)';
+    sessionCtx.fillRect(xStart, yStart, width, height);
+    
+    sessionCtx.beginPath();
+    sessionCtx.rect(xStart, yStart, width, height);
+    sessionCtx.strokeStyle = 'rgba(156, 39, 176, 0.7)';
+    sessionCtx.lineWidth = 2;
+    if (isPreview) {
+      sessionCtx.setLineDash([4, 4]);
+    } else {
+      sessionCtx.setLineDash([]);
+    }
+    sessionCtx.stroke();
+    
+    if (isPreview || isSelected) {
+      drawCircle(sessionCtx, xStart, yStart, 4, '#ffffff', 'rgba(156, 39, 176, 0.7)');
+      drawCircle(sessionCtx, xEnd, yStart, 4, '#ffffff', 'rgba(156, 39, 176, 0.7)');
+      drawCircle(sessionCtx, xStart, yEnd, 4, '#ffffff', 'rgba(156, 39, 176, 0.7)');
+      drawCircle(sessionCtx, xEnd, yEnd, 4, '#ffffff', 'rgba(156, 39, 176, 0.7)');
+    }
+  } else if (type === 'long' || type === 'short') {
+    const entryPrice = start.price;
+    const targetPrice = end.price;
+    const priceDiff = Math.abs(targetPrice - entryPrice);
+    
+    let stopPrice;
+    if (type === 'long') {
+      stopPrice = entryPrice - priceDiff;
+    } else {
+      stopPrice = entryPrice + priceDiff;
+    }
+    
+    const yTarget = candlestickSeries.priceToCoordinate(targetPrice);
+    const yStop = candlestickSeries.priceToCoordinate(stopPrice);
+    
+    if (yTarget === null || yStop === null) {
+      sessionCtx.restore();
+      return;
+    }
+    
+    const minX = Math.min(xStart, xEnd);
+    const maxX = Math.max(xStart, xEnd);
+    const boxWidth = maxX - minX;
+    
+    let yGreenTop, yGreenBottom, yRedTop, yRedBottom;
+    if (type === 'long') {
+      yGreenTop = yTarget;
+      yGreenBottom = yStart;
+      yRedTop = yStart;
+      yRedBottom = yStop;
+    } else {
+      yGreenTop = yStart;
+      yGreenBottom = yTarget;
+      yRedTop = yStop;
+      yRedBottom = yStart;
+    }
+    
+    // Fill Green Box (Target)
+    sessionCtx.fillStyle = 'rgba(8, 153, 129, 0.14)';
+    sessionCtx.fillRect(minX, yGreenTop, boxWidth, yGreenBottom - yGreenTop);
+    
+    // Fill Red Box (Stop Loss)
+    sessionCtx.fillStyle = 'rgba(242, 54, 69, 0.14)';
+    sessionCtx.fillRect(minX, yRedTop, boxWidth, yRedBottom - yRedTop);
+    
+    sessionCtx.lineWidth = 1.5;
+    if (isPreview) {
+      sessionCtx.setLineDash([3, 3]);
+    } else {
+      sessionCtx.setLineDash([]);
+    }
+    
+    // Green Border
+    sessionCtx.strokeStyle = 'rgba(8, 153, 129, 0.6)';
+    sessionCtx.strokeRect(minX, yGreenTop, boxWidth, yGreenBottom - yGreenTop);
+    
+    // Red Border
+    sessionCtx.strokeStyle = 'rgba(242, 54, 69, 0.6)';
+    sessionCtx.strokeRect(minX, yRedTop, boxWidth, yRedBottom - yRedTop);
+    
+    // Entry Line (divider in the middle)
+    sessionCtx.beginPath();
+    sessionCtx.moveTo(minX, yStart);
+    sessionCtx.lineTo(maxX, yStart);
+    sessionCtx.strokeStyle = '#1e222d';
+    sessionCtx.lineWidth = 2.5;
+    sessionCtx.setLineDash([]);
+    sessionCtx.stroke();
+    
+    if (isSelected) {
+      drawCircle(sessionCtx, minX, yStart, 4.5, '#ffffff', '#1e222d');
+      drawCircle(sessionCtx, maxX, yStart, 4.5, '#ffffff', '#1e222d');
+      drawCircle(sessionCtx, minX, yGreenTop, 4, '#ffffff', 'rgba(8, 153, 129, 0.6)');
+      drawCircle(sessionCtx, maxX, yGreenTop, 4, '#ffffff', 'rgba(8, 153, 129, 0.6)');
+      drawCircle(sessionCtx, minX, yRedBottom, 4, '#ffffff', 'rgba(242, 54, 69, 0.6)');
+      drawCircle(sessionCtx, maxX, yRedBottom, 4, '#ffffff', 'rgba(242, 54, 69, 0.6)');
+    }
+    
+    const targetPct = (priceDiff / entryPrice) * 100;
+    const stopPct = (priceDiff / entryPrice) * 100;
+    
+    drawStatsCard(minX + boxWidth / 2, yStart, priceDiff, targetPct, stopPct, entryPrice, targetPrice, stopPrice, type);
+  }
+  
+  sessionCtx.restore();
+}
+
+function drawCircle(ctx, x, y, r, fillColor, strokeColor) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, 2 * Math.PI);
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawStatsCard(x, y, priceDiff, targetPct, stopPct, entryPrice, targetPrice, stopPrice, type) {
+  const cardWidth = 160;
+  const cardHeight = 70;
+  const cardX = x - cardWidth / 2;
+  const cardY = y - cardHeight / 2;
+  
+  sessionCtx.save();
+  
+  sessionCtx.fillStyle = 'rgba(30, 34, 45, 0.95)';
+  sessionCtx.strokeStyle = 'rgba(54, 58, 69, 0.9)';
+  sessionCtx.lineWidth = 1.5;
+  
+  sessionCtx.beginPath();
+  const radius = 6;
+  if (sessionCtx.roundRect) {
+    sessionCtx.roundRect(cardX, cardY, cardWidth, cardHeight, radius);
+  } else {
+    sessionCtx.rect(cardX, cardY, cardWidth, cardHeight);
+  }
+  sessionCtx.fill();
+  sessionCtx.stroke();
+  
+  sessionCtx.fillStyle = '#ffffff';
+  sessionCtx.font = 'Outfit, sans-serif';
+  sessionCtx.textAlign = 'center';
+  sessionCtx.textBaseline = 'middle';
+  
+  sessionCtx.font = 'bold 10px Outfit, sans-serif';
+  sessionCtx.fillText('Risk/Reward Ratio: 1.00', x, cardY + 15);
+  
+  sessionCtx.font = '9px Outfit, sans-serif';
+  sessionCtx.fillStyle = '#26a69a';
+  sessionCtx.fillText(`Target: +${priceDiff.toFixed(2)} (+${targetPct.toFixed(2)}%)`, x, cardY + 33);
+  
+  sessionCtx.fillStyle = '#ef5350';
+  sessionCtx.fillText(`Stop: -${priceDiff.toFixed(2)} (-${stopPct.toFixed(2)}%)`, x, cardY + 48);
+  
+  sessionCtx.font = '8px Outfit, sans-serif';
+  sessionCtx.fillStyle = '#848e9c';
+  sessionCtx.fillText(`Entry: ${entryPrice.toFixed(2)}`, x, cardY + 60);
+  
+  sessionCtx.restore();
+}
+
+function saveDrawings() {
+  try {
+    localStorage.setItem('xauusd_custom_drawings', JSON.stringify(customDrawings));
+  } catch (e) {
+    console.error('Failed to save drawings to localStorage:', e);
+  }
+}
+
+function loadDrawings() {
+  try {
+    const saved = localStorage.getItem('xauusd_custom_drawings');
+    if (saved) {
+      customDrawings = JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Failed to load drawings from localStorage:', e);
+  }
+}
+
+function handleViewportMouseDown(e) {
+  if (e.button === 2) {
+    if (activeTool !== 'cursor' && drawingStart) {
+      e.stopPropagation();
+      e.preventDefault();
+      drawingStart = null;
+      drawingCurrent = null;
+      setActiveTool('cursor');
+    }
+    return;
+  }
+
+  if (e.button !== 0) return;
+  
+  if (activeTool === 'cursor') {
+    const coords = getChartCoords(e);
+    if (!coords) return;
+    
+    const hit = hitTestDrawings(coords.x, coords.y);
+    if (hit) {
+      selectedDrawingId = hit.id;
+      e.stopPropagation();
+      e.preventDefault();
+    } else {
+      selectedDrawingId = null;
+    }
     return;
   }
   
-  // Render boxes only if they intersect with the visible timescale range
-  for (const box of sessionBoxes) {
-    if (box.endTime < visibleRange.from || box.startTime > visibleRange.to) {
-      continue;
+  if (activeTool === 'horizontal') return;
+  
+  const coords = getChartCoords(e);
+  if (!coords) return;
+  
+  e.stopPropagation();
+  e.preventDefault();
+  
+  if (!drawingStart) {
+    drawingStart = { time: coords.time, price: coords.price, x: coords.x, y: coords.y };
+    drawingCurrent = { time: coords.time, price: coords.price, x: coords.x, y: coords.y };
+  } else {
+    const newDrawing = {
+      id: 'draw_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      type: activeTool,
+      start: { time: drawingStart.time, price: drawingStart.price },
+      end: { time: coords.time, price: coords.price }
+    };
+    customDrawings.push(newDrawing);
+    saveDrawings();
+    
+    drawingStart = null;
+    drawingCurrent = null;
+    setActiveTool('cursor');
+  }
+}
+
+function handleViewportMouseMove(e) {
+  if (activeTool === 'cursor') return;
+  if (activeTool === 'horizontal') return;
+  
+  if (drawingStart) {
+    const coords = getChartCoords(e);
+    if (coords) {
+      drawingCurrent = { time: coords.time, price: coords.price, x: coords.x, y: coords.y };
     }
+    e.stopPropagation();
+    e.preventDefault();
+  }
+}
+
+function handleViewportContextMenu(e) {
+  if (activeTool !== 'cursor' || drawingStart) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}
+
+function hitTestDrawings(x, y) {
+  if (!chart || !candlestickSeries) return null;
+  const timeScale = chart.timeScale();
+  
+  for (let i = customDrawings.length - 1; i >= 0; i--) {
+    const drawing = customDrawings[i];
+    const xStart = timeScale.timeToCoordinate(drawing.start.time);
+    const xEnd = timeScale.timeToCoordinate(drawing.end.time);
+    const yStart = candlestickSeries.priceToCoordinate(drawing.start.price);
+    const yEnd = candlestickSeries.priceToCoordinate(drawing.end.price);
     
-    const xStart = timeScale.timeToCoordinate(box.startTime);
-    const xEnd = timeScale.timeToCoordinate(box.endTime);
-    const yHigh = candlestickSeries.priceToCoordinate(box.high);
-    const yLow = candlestickSeries.priceToCoordinate(box.low);
+    if (xStart === null || xEnd === null || yStart === null || yEnd === null) continue;
     
-    if (xStart === null || xEnd === null || yHigh === null || yLow === null) {
-      continue;
+    if (drawing.type === 'trendline') {
+      const dist = getDistanceToSegment(x, y, xStart, yStart, xEnd, yEnd);
+      if (dist < 8) {
+        return drawing;
+      }
+    } else if (drawing.type === 'rectangle') {
+      const minX = Math.min(xStart, xEnd);
+      const maxX = Math.max(xStart, xEnd);
+      const minY = Math.min(yStart, yEnd);
+      const maxY = Math.max(yStart, yEnd);
+      
+      if (x >= minX - 4 && x <= maxX + 4 && y >= minY - 4 && y <= maxY + 4) {
+        return drawing;
+      }
+    } else if (drawing.type === 'long' || drawing.type === 'short') {
+      const minX = Math.min(xStart, xEnd);
+      const maxX = Math.max(xStart, xEnd);
+      
+      const entryPrice = drawing.start.price;
+      const targetPrice = drawing.end.price;
+      const priceDiff = Math.abs(targetPrice - entryPrice);
+      
+      let stopPrice;
+      if (drawing.type === 'long') {
+        stopPrice = entryPrice - priceDiff;
+      } else {
+        stopPrice = entryPrice + priceDiff;
+      }
+      
+      const prices = [entryPrice, targetPrice, stopPrice];
+      const ys = prices.map(p => candlestickSeries.priceToCoordinate(p));
+      if (ys.some(val => val === null)) continue;
+      
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      
+      if (x >= minX - 4 && x <= maxX + 4 && y >= minY - 4 && y <= maxY + 4) {
+        return drawing;
+      }
     }
-    
-    const width = xEnd - xStart;
-    const height = yLow - yHigh;
-    
-    // Draw Box Fill
-    sessionCtx.fillStyle = box.colorBg;
-    sessionCtx.fillRect(xStart, yHigh, width, height);
-    
-    // Draw Box Outline
-    sessionCtx.strokeStyle = box.colorBorder;
-    sessionCtx.lineWidth = 1.5;
-    sessionCtx.strokeRect(xStart, yHigh, width, height);
-    
-    // Draw Session Text Label inside the box
-    sessionCtx.fillStyle = box.colorBorder;
-    sessionCtx.font = 'bold 9px Outfit, sans-serif';
-    sessionCtx.textAlign = 'left';
-    sessionCtx.textBaseline = 'top';
-    
-    let label = '';
-    if (box.type === 'asian') label = 'ASIA';
-    else if (box.type === 'london') label = 'LONDON';
-    else if (box.type === 'newyork') label = 'NY';
-    
-    sessionCtx.fillText(label, xStart + 4, yHigh + 4);
+  }
+  return null;
+}
+
+function getDistanceToSegment(x, y, x1, y1, x2, y2) {
+  const A = x - x1;
+  const B = y - y1;
+  const C = x2 - x1;
+  const D = y2 - y1;
+  
+  const dot = A * C + B * D;
+  const len_sq = C * C + D * D;
+  let param = -1;
+  if (len_sq !== 0) param = dot / len_sq;
+  
+  let xx, yy;
+  if (param < 0) {
+    xx = x1;
+    yy = y1;
+  } else if (param > 1) {
+    xx = x2;
+    yy = y2;
+  } else {
+    xx = x1 + param * C;
+    yy = y1 + param * D;
   }
   
-  requestAnimationFrame(renderLoop);
+  const dx = x - xx;
+  const dy = y - yy;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function getChartCoords(e) {
+  if (!chart || !candlestickSeries || !sessionCanvas) return null;
+  
+  const rect = sessionCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  const timeScale = chart.timeScale();
+  let time = timeScale.coordinateToTime(x);
+  
+  if (time === null && candlestickData.length > 0) {
+    if (x < 0) {
+      time = candlestickData[0].time;
+    } else {
+      time = candlestickData[candlestickData.length - 1].time;
+    }
+  }
+  
+  const price = candlestickSeries.coordinateToPrice(y);
+  
+  return { time, price, x, y };
 }
